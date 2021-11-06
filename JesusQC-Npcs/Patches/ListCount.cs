@@ -1,51 +1,57 @@
-﻿using GameCore;
 using HarmonyLib;
 using JesusQC_Npcs.Features;
-using UnityEngine;
-using Log = Exiled.API.Features.Log;
+using NorthwoodLib.Pools;
+using System.Collections.Generic;
+using System.Reflection.Emit;
+using static HarmonyLib.AccessTools;
 
 namespace JesusQC_Npcs.Patches
 {
     [HarmonyPatch(typeof(PlayerManager), nameof(PlayerManager.AddPlayer))]
     internal static class ListCount
     {
-        [HarmonyPrefix]
-        private static bool AddPlayer(GameObject player, int maxPlayers)
+        [HarmonyTranspiler]
+        private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions, ILGenerator generator)
         {
-            Console.AddDebugLog("PLIST", "[PlayerManager] AddPlayer: " + player.GetComponent<NicknameSync>().MyNick + string.Format(" Max Slots: {0}", maxPlayers), MessageImportance.LessImportant);
-            if (!PlayerManager.players.Contains(player))
+            List<CodeInstruction> newInstructions = ListPool<CodeInstruction>.Shared.Rent(instructions);
+
+            int index = newInstructions.FindIndex(instruction => instruction.opcode == OpCodes.Stsfld);
+
+            newInstructions.InsertRange(index, new[]
             {
-                PlayerManager.players.Add(player);
-                ServerConsole.PlayersAmount = PlayerManager.players.Count - Dummy.List.Count;
-                ServerConsole.PlayersListChanged = true;
-            }
+                new CodeInstruction(OpCodes.Call, PropertyGetter(typeof(Dummy), nameof(Dummy.List))),
+                new CodeInstruction(OpCodes.Call, PropertyGetter(typeof(List<Dummy>), nameof(List<Dummy>.Count))),
+                new CodeInstruction(OpCodes.Sub),
+            });
 
-            IdleMode.SetIdleMode(false);
+            for (int z = 0; z < newInstructions.Count; z++)
+                yield return newInstructions[z];
 
-            return false;
+            ListPool<CodeInstruction>.Shared.Return(newInstructions);
         }
     }
 
     [HarmonyPatch(typeof(PlayerManager), nameof(PlayerManager.RemovePlayer))]
     internal static class ListRemove
     {
-        [HarmonyPrefix]
-        private static bool RemovePlayer(GameObject player, int maxPlayers)
+        [HarmonyTranspiler]
+        private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions, ILGenerator generator)
         {
-            PlayerList.DestroyPlayer(player);
-            if (PlayerManager.players.Contains(player))
-            {
-                PlayerManager.players.Remove(player);
-                ServerConsole.PlayersAmount = PlayerManager.players.Count - Dummy.List.Count;
-                ServerConsole.PlayersListChanged = true;
-            }
+            List<CodeInstruction> newInstructions = ListPool<CodeInstruction>.Shared.Rent(instructions);
 
-            if (PlayerManager.players.Count == 0)
-            {
-                IdleMode.SetIdleMode(true);
-            }
+            int index = newInstructions.FindIndex(instruction => instruction.opcode == OpCodes.Stsfld);
 
-            return false;
+            newInstructions.InsertRange(index, new[]
+            {
+                new CodeInstruction(OpCodes.Call, PropertyGetter(typeof(Dummy), nameof(Dummy.List))),
+                new CodeInstruction(OpCodes.Call, PropertyGetter(typeof(List<Dummy>), nameof(List<Dummy>.Count))),
+                new CodeInstruction(OpCodes.Sub),
+            });
+
+            for (int z = 0; z < newInstructions.Count; z++)
+                yield return newInstructions[z];
+
+            ListPool<CodeInstruction>.Shared.Return(newInstructions);
         }
     }
 }
